@@ -41,6 +41,22 @@ export default async function SessionDetailPage({
     notFound()
   }
 
+  // Fetch attendance records if the user is a leader
+  let attendance = null
+  if (profile.role === 'leader') {
+    const { data } = await supabase
+      .from('attendance')
+      .select(`
+        user_id,
+        checked_in_at,
+        profiles ( name )
+      `)
+      .eq('session_id', session.id)
+      .order('checked_in_at', { ascending: true })
+
+    attendance = data
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 p-8">
       <div className="max-w-4xl mx-auto">
@@ -61,11 +77,48 @@ export default async function SessionDetailPage({
           </div>
         )}
 
+        {/* Attendance section – visible to everyone, but content varies */}
         <div className="bg-white p-6 rounded-lg shadow">
           <h2 className="text-xl font-semibold mb-4">Attendance</h2>
-          <p className="text-gray-600">
-            Attendance tracking will be added in Part 6.
-          </p>
+
+          {profile.role === 'leader' ? (
+            <>
+              {!attendance || attendance.length === 0 ? (
+                <p className="text-gray-600">No attendance recorded yet.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Name
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Checked In At
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {attendance.map((record: any) => (
+                        <tr key={record.user_id}>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                            {record.profiles.name}
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                            {new Date(record.checked_in_at).toLocaleString()}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
+          ) : (
+            <p className="text-gray-600">
+              Your attendance will be recorded when you scan the QR code during the session.
+            </p>
+          )}
         </div>
       </div>
     </div>

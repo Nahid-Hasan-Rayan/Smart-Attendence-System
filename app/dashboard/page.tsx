@@ -65,14 +65,24 @@ export default async function DashboardPage() {
       <div className="max-w-4xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-3xl font-bold">Dashboard</h1>
-          {profile.role === 'leader' && (
+          <div className="space-x-4">
+            {/* Scan QR button – visible to all authenticated users */}
             <Link
-              href="/dashboard/create-session"
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+              href="/scan"
+              className="inline-block bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
             >
-              + New Session
+              Scan QR
             </Link>
-          )}
+            {/* New Session button – only for leaders */}
+            {profile.role === 'leader' && (
+              <Link
+                href="/dashboard/create-session"
+                className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+              >
+                + New Session
+              </Link>
+            )}
+          </div>
         </div>
 
         <p className="text-gray-600 mb-6">
