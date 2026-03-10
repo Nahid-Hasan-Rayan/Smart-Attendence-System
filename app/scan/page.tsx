@@ -1,14 +1,15 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Html5QrcodeScanner } from 'html5-qrcode'
 import { useRouter } from 'next/navigation'
+import { generateDeviceFingerprint } from '@/lib/fingerprint'
 
 export default function ScanPage() {
   const [scanResult, setScanResult] = useState<string | null>(null)
   const [error, setError] = useState('')
   const [success, setSuccess] = useState(false)
-  const [isLoading, setIsLoading] = useState(true)
+  const [gettingLocation, setGettingLocation] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -27,19 +28,10 @@ export default function ScanPage() {
     }
 
     function onScanError(errorMessage: string) {
-      // Check if it's a permission error
-      if (errorMessage.includes('Permission') || errorMessage.includes('denied')) {
-        setError('Camera access denied. Please enable camera permissions and refresh.')
-      } else {
-        console.warn(errorMessage)
-      }
+      console.warn(errorMessage)
     }
 
-    // Hide loading after a short delay (assuming scanner renders)
-    const timer = setTimeout(() => setIsLoading(false), 1000)
-
     return () => {
-      clearTimeout(timer)
       scanner.clear().catch(console.error)
     }
   }, [])
@@ -48,28 +40,54 @@ export default function ScanPage() {
     try {
       const { sessionId, token } = JSON.parse(qrData)
 
-      const formData = new FormData()
-      formData.append('sessionId', sessionId)
-      formData.append('token', token)
+      // Request user's location
+      setGettingLocation(true)
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        })
+      })
+      setGettingLocation(false)
 
-      const res = await fetch('/scan', {
+      const userLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      }
+
+      // Generate device fingerprint
+      const fingerprint = generateDeviceFingerprint()
+
+      const res = await fetch('/api/attendance/mark', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          sessionId, 
+          token, 
+          userLocation,
+          deviceFingerprint: fingerprint 
+        }),
       })
 
-      const result = await res.json()
-
-      if (result.error) {
-        setError(result.error)
-      } else if (result.success) {
+      const data = await res.json()
+      if (res.ok) {
         setSuccess(true)
-        // Redirect after 2 seconds
-        setTimeout(() => {
-          router.push('/dashboard')
-        }, 2000)
+        setTimeout(() => router.push('/dashboard'), 2000)
+      } else {
+        setError(data.error || 'Failed to mark attendance')
       }
-    } catch (err) {
-      setError('Invalid QR code format')
+    } catch (err: any) {
+      setGettingLocation(false)
+      if (err.code === 1) { // Geolocation permission denied
+        setError('Location permission denied. Please enable location services to check in.')
+      } else if (err.code === 2) { // Position unavailable
+        setError('Unable to get your location. Please try again.')
+      } else if (err.code === 3) { // Timeout
+        setError('Location request timed out.')
+      } else {
+        setError('Invalid QR code format or network error.')
+      }
     }
   }
 
@@ -78,39 +96,35 @@ export default function ScanPage() {
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-6 text-center">Scan QR Code</h1>
 
-        {isLoading && !error && (
-          <div className="text-center py-8">
-            <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mb-2"></div>
-            <p className="text-gray-600">Initializing camera...</p>
-          </div>
-        )}
+        <div className="bg-white p-6 rounded-lg shadow">
+          {gettingLocation && (
+            <div className="text-center py-4">
+              <p>Getting your location...</p>
+            </div>
+          )}
 
-        {!isLoading && !scanResult && !success && !error && (
-          <div className="bg-white p-6 rounded-lg shadow">
+          {!scanResult && !success && !error && !gettingLocation && (
             <div id="qr-reader" className="mb-4"></div>
-            <p className="text-sm text-gray-500 text-center">
-              Position the QR code within the frame to scan.
-            </p>
-          </div>
-        )}
+          )}
 
-        {error && (
-          <div className="mt-4 p-4 bg-red-50 text-red-600 rounded-lg">
-            {error}
-            <button
-              onClick={() => window.location.reload()}
-              className="block mt-2 text-sm underline"
-            >
-              Try again
-            </button>
-          </div>
-        )}
+          {error && (
+            <div className="p-4 bg-red-50 text-red-600 rounded">
+              {error}
+              <button
+                onClick={() => window.location.reload()}
+                className="block mt-2 text-sm underline"
+              >
+                Try again
+              </button>
+            </div>
+          )}
 
-        {success && (
-          <div className="mt-4 p-4 bg-green-50 text-green-600 rounded-lg text-center">
-            ✅ Attendance marked successfully! Redirecting...
-          </div>
-        )}
+          {success && (
+            <div className="p-4 bg-green-50 text-green-600 rounded text-center">
+              ✅ Attendance marked successfully! Redirecting...
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )

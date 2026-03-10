@@ -1,13 +1,17 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
+import LocationPicker from '@/components/LocationPicker'
 
 export default function CreateSessionPage() {
   const [title, setTitle] = useState('')
   const [date, setDate] = useState('')
   const [startTime, setStartTime] = useState('')
+  const [endTime, setEndTime] = useState('')
+  const [type, setType] = useState('lecture')
+  const [location, setLocation] = useState<{ lat: number; lng: number; radius: number; address?: string } | null>(null)
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
@@ -18,7 +22,6 @@ export default function CreateSessionPage() {
     setLoading(true)
     setError('')
 
-    // Get current user
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) {
       setError('You must be logged in')
@@ -26,7 +29,6 @@ export default function CreateSessionPage() {
       return
     }
 
-    // Get user's profile to know organization_id and role
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('organization_id, role')
@@ -34,12 +36,12 @@ export default function CreateSessionPage() {
       .single()
 
     if (profileError || !profile) {
+      console.error('Profile fetch error:', profileError)
       setError('Could not load profile')
       setLoading(false)
       return
     }
 
-    // Ensure user is a leader and has an organization
     if (profile.role !== 'leader') {
       setError('Only leaders can create sessions')
       setLoading(false)
@@ -52,21 +54,40 @@ export default function CreateSessionPage() {
       return
     }
 
-    // Combine date and time into a single ISO timestamp
-    const startTimeISO = new Date(`${date}T${startTime}`).toISOString()
+    // Combine date and time into ISO strings
+    const startISO = new Date(`${date}T${startTime}`).toISOString()
+    const endISO = new Date(`${date}T${endTime}`).toISOString()
 
-    // Insert the session
+    if (new Date(endISO) <= new Date(startISO)) {
+      setError('End time must be after start time')
+      setLoading(false)
+      return
+    }
+
+    const sessionData: any = {
+      title,
+      date,
+      start_time: startISO,
+      end_time: endISO,
+      type,
+      organization_id: profile.organization_id,
+      created_by: user.id
+    }
+
+    if (location) {
+      sessionData.location = location
+    }
+
+    // Log the data being sent (helpful for debugging)
+    console.log('Inserting session with data:', sessionData)
+
     const { error: sessionError } = await supabase
       .from('sessions')
-      .insert({
-        title,
-        date,
-        start_time: startTimeISO,
-        organization_id: profile.organization_id,
-        created_by: user.id
-      })
+      .insert(sessionData)
 
     if (sessionError) {
+      // Log the full error object to the console
+      console.error('Session insert error details:', sessionError)
       setError(sessionError.message)
       setLoading(false)
     } else {
@@ -75,17 +96,14 @@ export default function CreateSessionPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md">
-        <h1 className="text-2xl font-bold text-center mb-6">Create Session</h1>
+    <div className="min-h-screen bg-gray-50 p-8">
+      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
+        <h1 className="text-2xl font-bold mb-6">Create New Session</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded text-sm">{error}</div>
-          )}
+          {error && <div className="bg-red-50 text-red-600 p-3 rounded text-sm">{error}</div>}
+
           <div>
-            <label htmlFor="title" className="block text-sm font-medium text-gray-700">
-              Session Title
-            </label>
+            <label htmlFor="title" className="block text-sm font-medium text-gray-700">Session Title</label>
             <input
               id="title"
               type="text"
@@ -95,10 +113,25 @@ export default function CreateSessionPage() {
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
+
           <div>
-            <label htmlFor="date" className="block text-sm font-medium text-gray-700">
-              Date
-            </label>
+            <label htmlFor="type" className="block text-sm font-medium text-gray-700">Session Type</label>
+            <select
+              id="type"
+              value={type}
+              onChange={(e) => setType(e.target.value)}
+              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            >
+              <option value="lecture">Lecture</option>
+              <option value="lab">Lab</option>
+              <option value="standup">Standup</option>
+              <option value="review">Review</option>
+              <option value="other">Other</option>
+            </select>
+          </div>
+
+          <div>
+            <label htmlFor="date" className="block text-sm font-medium text-gray-700">Date</label>
             <input
               id="date"
               type="date"
@@ -108,19 +141,40 @@ export default function CreateSessionPage() {
               className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </div>
-          <div>
-            <label htmlFor="time" className="block text-sm font-medium text-gray-700">
-              Start Time
-            </label>
-            <input
-              id="time"
-              type="time"
-              required
-              value={startTime}
-              onChange={(e) => setStartTime(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            />
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label htmlFor="startTime" className="block text-sm font-medium text-gray-700">Start Time</label>
+              <input
+                id="startTime"
+                type="time"
+                required
+                value={startTime}
+                onChange={(e) => setStartTime(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label htmlFor="endTime" className="block text-sm font-medium text-gray-700">End Time</label>
+              <input
+                id="endTime"
+                type="time"
+                required
+                value={endTime}
+                onChange={(e) => setEndTime(e.target.value)}
+                className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
           </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-2">Location (optional)</label>
+            <LocationPicker onLocationChange={setLocation} />
+            <p className="text-xs text-gray-500 mt-1">
+              Set a geofence for attendance. If not set, location will not be verified.
+            </p>
+          </div>
+
           <button
             type="submit"
             disabled={loading}
