@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
+import DashboardContent from './DashboardContent' // client component
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -10,15 +11,18 @@ export default async function DashboardPage() {
     redirect('/login')
   }
 
-  const { data: profile } = await supabase
+  // Fetch user profile
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('role, organization_id')
     .eq('id', user.id)
     .single()
 
-  if (!profile) redirect('/register')
+  if (profileError || !profile) {
+    redirect('/register')
+  }
 
-  // No organization → show prompt
+  // No organization → show prompt (server‑rendered, no mode needed)
   if (!profile.organization_id) {
     return (
       <div className="min-h-screen bg-gray-50 p-8">
@@ -46,73 +50,37 @@ export default async function DashboardPage() {
     )
   }
 
-  // Fetch organization details
-  const { data: organization } = await supabase
+  // Fetch organization details (including mode)
+  const { data: organization, error: orgError } = await supabase
     .from('organizations')
-    .select('name, join_code')
+    .select('name, join_code, mode')
     .eq('id', profile.organization_id)
     .single()
 
+  if (orgError || !organization) {
+    // Fallback – should not happen
+    return <div>Error loading organization</div>
+  }
+
   // Fetch sessions for this organization
-  const { data: sessions } = await supabase
+  const { data: sessions, error: sessionsError } = await supabase
     .from('sessions')
     .select('*')
     .eq('organization_id', profile.organization_id)
     .order('start_time', { ascending: false })
 
+  if (sessionsError) {
+    // Handle error appropriately
+    console.error('Error fetching sessions:', sessionsError)
+  }
+
+  // Pass all fetched data to the client component
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold">Dashboard</h1>
-          {profile.role === 'leader' && (
-            <Link
-              href="/dashboard/create-session"
-              className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
-            >
-              + New Session
-            </Link>
-          )}
-        </div>
-
-        <p className="text-gray-600 mb-6">
-          You are a <span className="font-semibold">{profile.role}</span> of{' '}
-          <span className="font-semibold">{organization?.name}</span>.
-        </p>
-
-        {profile.role === 'leader' && (
-          <div className="mb-6">
-            <h2 className="text-xl font-semibold mb-2">Organization Join Code</h2>
-            <div className="bg-white p-4 rounded-lg shadow">
-              <p className="text-2xl font-mono">{organization?.join_code}</p>
-              <p className="text-sm text-gray-500 mt-1">
-                Share this code with members who want to join.
-              </p>
-            </div>
-          </div>
-        )}
-
-        <h2 className="text-2xl font-semibold mb-4">Sessions</h2>
-        {!sessions || sessions.length === 0 ? (
-          <p className="text-gray-600">No sessions yet.</p>
-        ) : (
-          <ul className="space-y-4">
-            {sessions.map((session) => (
-              <li key={session.id} className="bg-white p-4 rounded-lg shadow">
-                <Link href={`/dashboard/session/${session.id}`}>
-                  <h3 className="text-xl font-semibold text-blue-600 hover:underline">
-                    {session.title}
-                  </h3>
-                </Link>
-                <p className="text-gray-600">
-                  {new Date(session.start_time).toLocaleDateString()} at{' '}
-                  {new Date(session.start_time).toLocaleTimeString()}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </div>
+    <DashboardContent
+      profile={profile}
+      organization={organization}
+      sessions={sessions || []}
+      userEmail={user.email ?? ''}
+    />
   )
 }

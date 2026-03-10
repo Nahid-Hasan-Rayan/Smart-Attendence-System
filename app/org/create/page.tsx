@@ -6,14 +6,13 @@ import { useRouter } from 'next/navigation'
 
 export default function CreateOrgPage() {
   const [name, setName] = useState('')
+  const [mode, setMode] = useState<'education' | 'corporate'>('education')
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
-  const generateJoinCode = () => {
-    return Math.random().toString(36).substring(2, 10).toUpperCase()
-  }
+  const generateJoinCode = () => Math.random().toString(36).substring(2, 10).toUpperCase()
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -29,10 +28,9 @@ export default function CreateOrgPage() {
 
     const joinCode = generateJoinCode()
 
-    // Create organization
     const { data: org, error: orgError } = await supabase
       .from('organizations')
-      .insert({ name, join_code: joinCode, created_by: user.id })
+      .insert({ name, mode, join_code: joinCode, created_by: user.id })
       .select()
       .single()
 
@@ -42,7 +40,6 @@ export default function CreateOrgPage() {
       return
     }
 
-    // Update profile to leader and attach organization
     const { error: profileError } = await supabase
       .from('profiles')
       .update({ role: 'leader', organization_id: org.id })
@@ -62,27 +59,25 @@ export default function CreateOrgPage() {
       <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-md">
         <h1 className="text-2xl font-bold text-center mb-6">Create Organization</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
-          {error && (
-            <div className="bg-red-50 text-red-600 p-3 rounded text-sm">{error}</div>
-          )}
+          {error && <div className="bg-red-50 text-red-600 p-3 rounded text-sm">{error}</div>}
           <div>
-            <label htmlFor="name" className="block text-sm font-medium text-gray-700">
-              Organization Name
-            </label>
-            <input
-              id="name"
-              type="text"
-              required
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-            />
+            <label htmlFor="name" className="block text-sm font-medium text-gray-700">Organization Name</label>
+            <input id="name" type="text" required value={name} onChange={(e) => setName(e.target.value)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
           </div>
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <div>
+            <span className="block text-sm font-medium text-gray-700 mb-2">Mode</span>
+            <div className="flex space-x-4">
+              <label className="flex items-center">
+                <input type="radio" name="mode" value="education" checked={mode === 'education'} onChange={() => setMode('education')} className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300" />
+                <span className="ml-2 text-sm text-gray-700">Education</span>
+              </label>
+              <label className="flex items-center">
+                <input type="radio" name="mode" value="corporate" checked={mode === 'corporate'} onChange={() => setMode('corporate')} className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300" />
+                <span className="ml-2 text-sm text-gray-700">Corporate</span>
+              </label>
+            </div>
+          </div>
+          <button type="submit" disabled={loading} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed">
             {loading ? 'Creating...' : 'Create Organization'}
           </button>
         </form>
