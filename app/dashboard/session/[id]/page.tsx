@@ -38,7 +38,7 @@ export default async function SessionDetailPage({
     notFound()
   }
 
-  // Fetch initial attendance with profiles
+  // Fetch initial attendance with profiles (including device_fingerprint if needed)
   const { data: attendance, error: attendanceError } = await supabase
     .from('attendance')
     .select(`

@@ -37,50 +37,59 @@ export default function ScanPage() {
   }, [])
 
   const submitAttendance = async (qrData: string) => {
-  try {
-    const { sessionId, token } = JSON.parse(qrData)
+    try {
+      const { sessionId, token } = JSON.parse(qrData)
 
-    // Request user's location
-    setGettingLocation(true)
-    const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-      navigator.geolocation.getCurrentPosition(resolve, reject, {
-        enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
+      // Request user's location
+      setGettingLocation(true)
+      const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        })
       })
-    })
-    setGettingLocation(false)
+      setGettingLocation(false)
 
-    const userLocation = {
-      lat: position.coords.latitude,
-      lng: position.coords.longitude
+      const userLocation = {
+        lat: position.coords.latitude,
+        lng: position.coords.longitude
+      }
+
+      // Generate device fingerprint
+      const fingerprint = generateDeviceFingerprint()
+
+      const res = await fetch('/api/attendance/mark', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          sessionId, 
+          token, 
+          userLocation,
+          deviceFingerprint: fingerprint 
+        }),
+      })
+
+      const data = await res.json()
+      if (res.ok) {
+        setSuccess(true)
+        setTimeout(() => router.push('/dashboard'), 2000)
+      } else {
+        setError(data.error || 'Failed to mark attendance')
+      }
+    } catch (err: any) {
+      setGettingLocation(false)
+      if (err.code === 1) { // Geolocation permission denied
+        setError('Location permission denied. Please enable location services to check in.')
+      } else if (err.code === 2) { // Position unavailable
+        setError('Unable to get your location. Please try again.')
+      } else if (err.code === 3) { // Timeout
+        setError('Location request timed out.')
+      } else {
+        setError('Invalid QR code format or network error.')
+      }
     }
-
-    // Generate device fingerprint
-    const fingerprint = generateDeviceFingerprint()
-
-    const res = await fetch('/api/attendance/mark', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        sessionId, 
-        token, 
-        userLocation,
-        deviceFingerprint: fingerprint 
-      }),
-    })
-
-    const data = await res.json()
-    if (res.ok) {
-      setSuccess(true)
-      setTimeout(() => router.push('/dashboard'), 2000)
-    } else {
-      setError(data.error || 'Failed to mark attendance')
-    }
-  } catch (err: any) {
-    // ... error handling as before
   }
-}
 
   return (
     <div className="min-h-screen bg-gray-50 p-8">
